@@ -11,7 +11,6 @@ import java.util.List;
 import java.util.Optional;
 
 @Service
-
 public class EnvioServiceJpaImpl implements EnvioService{
 
     private final EnvioRepository envioRepository;
@@ -66,6 +65,7 @@ public class EnvioServiceJpaImpl implements EnvioService{
     //Implementacion con logica de negocio
     @Override
     public Envio save(Envio envio) {
+
         double costo = calcularCostoEnvio(envio.getPesoKg(),
                 envio.getDestino());
         envio.setCosto(costo);
@@ -78,15 +78,19 @@ public class EnvioServiceJpaImpl implements EnvioService{
             throw new RuntimeException("El envio no puede pesar mas de 500kg");
         }
 
-        return envioRepository.save(envio);
+        entityManager.persist(envio);
+        return envio;
+        //return envioRepository.save(envio);
 
     }
 
 
     private double calcularCostoEnvio(Double pesoKg, String destino){
-        double costobase = 10000;
+
+        double costobase = 10000 ;
+
         if(pesoKg > 50){
-            costobase = costobase * 1.2;
+            costobase *= 1.2;
         }
         if (destino.equalsIgnoreCase("Internacional")){
             costobase = costobase * 1.5;
