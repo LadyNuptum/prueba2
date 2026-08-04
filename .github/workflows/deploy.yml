@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+
   workflow_dispatch:
 
 permissions:
@@ -14,15 +15,14 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
-  ECS_CLUSTER: ${{ vars.ECS_CLUSTER || 'default' }}
-  CONTAINER_PORT: ${{ vars.CONTAINER_PORT || '8080' }}
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECS_CLUSTER: ${{ secrets.ECS_CLUSTER }}
+  ECS_SERVICE: ${{ secrets.ECS_SERVICE }}
+  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+  CONTAINER_PORT: ${{ secrets.CONTAINER_PORT }}
 
-  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
-  ECS_SERVICE: ${{ vars.ECS_SERVICE }}
-
-  ECS_EXECUTION_ROLE: ${{ vars.ECS_EXECUTION_ROLE || 'ecsTaskExecutionRole' }}
-  ECS_INFRASTRUCTURE_ROLE: ${{ vars.ECS_INFRASTRUCTURE_ROLE || 'ecsInfrastructureRoleForExpressServices' }}
+  ECS_EXECUTION_ROLE: ecsTaskExecutionRole
+  ECS_INFRASTRUCTURE_ROLE: ecsInfrastructureRoleForExpressServices
 
 jobs:
   deploy:
@@ -36,13 +36,28 @@ jobs:
       - name: Verificar variables
         shell: bash
         run: |
-          if [ -z "$ECR_REPOSITORY" ]; then
-            echo "Falta configurar ECR_REPOSITORY"
+          if [ -z "$AWS_REGION" ]; then
+            echo "Falta configurar el secreto AWS_REGION"
+            exit 1
+          fi
+
+          if [ -z "$ECS_CLUSTER" ]; then
+            echo "Falta configurar el secreto ECS_CLUSTER"
             exit 1
           fi
 
           if [ -z "$ECS_SERVICE" ]; then
-            echo "Falta configurar ECS_SERVICE"
+            echo "Falta configurar el secreto ECS_SERVICE"
+            exit 1
+          fi
+
+          if [ -z "$ECR_REPOSITORY" ]; then
+            echo "Falta configurar el secreto ECR_REPOSITORY"
+            exit 1
+          fi
+
+          if [ -z "$CONTAINER_PORT" ]; then
+            echo "Falta configurar el secreto CONTAINER_PORT"
             exit 1
           fi
 
@@ -53,7 +68,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Obtener cuenta AWS
+      - name: Obtener número de cuenta AWS
         id: aws-account
         shell: bash
         run: |
@@ -76,6 +91,8 @@ jobs:
         run: |
           IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
           LATEST_URI="$ECR_REGISTRY/$ECR_REPOSITORY:latest"
+
+          echo "Construyendo imagen: $IMAGE_URI"
 
           docker build \
             --platform linux/amd64 \
@@ -116,3 +133,13 @@ jobs:
                 "value": "${{ secrets.DB_PASSWORD }}"
               }
             ]
+
+      - name: Mostrar información del despliegue
+        if: success()
+        shell: bash
+        run: |
+          echo "Despliegue completado correctamente"
+          echo "Cluster: $ECS_CLUSTER"
+          echo "Servicio: $ECS_SERVICE"
+          echo "Repositorio ECR: $ECR_REPOSITORY"
+          echo "Imagen: ${{ steps.build-image.outputs.image }}"
