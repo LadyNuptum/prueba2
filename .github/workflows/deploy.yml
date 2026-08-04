@@ -1,45 +1,118 @@
-name: Deploy to AWS App Runner
+name: Build and deploy to ECS Express
 
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: deploy-app-runner-production
-  cancel-in-progress: true
+  group: ecs-deploy-${{ github.repository }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  ECS_CLUSTER: ${{ vars.ECS_CLUSTER || 'default' }}
+  CONTAINER_PORT: ${{ vars.CONTAINER_PORT || '8080' }}
+
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+  ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+
+  ECS_EXECUTION_ROLE: ${{ vars.ECS_EXECUTION_ROLE || 'ecsTaskExecutionRole' }}
+  ECS_INFRASTRUCTURE_ROLE: ${{ vars.ECS_INFRASTRUCTURE_ROLE || 'ecsInfrastructureRoleForExpressServices' }}
 
 jobs:
-  build-and-deploy:
+  deploy:
+    name: Build and deploy
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout source code
-        uses: actions/checkout@v4
+      - name: Descargar repositorio
+        uses: actions/checkout@v6
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Verificar variables
+        shell: bash
+        run: |
+          if [ -z "$ECR_REPOSITORY" ]; then
+            echo "Falta configurar ECR_REPOSITORY"
+            exit 1
+          fi
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+          if [ -z "$ECS_SERVICE" ]; then
+            echo "Falta configurar ECS_SERVICE"
+            exit 1
+          fi
+
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Log in to Amazon ECR
+      - name: Obtener cuenta AWS
+        id: aws-account
+        shell: bash
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity \
+            --query Account \
+            --output text)
+
+          echo "id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Iniciar sesión en Amazon ECR
+        id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build Docker image
+      - name: Construir y publicar imagen
+        id: build-image
+        shell: bash
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
         run: |
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          LATEST_URI="$ECR_REGISTRY/$ECR_REPOSITORY:latest"
+
           docker build \
             --platform linux/amd64 \
             --pull \
-            -t "${{ secrets.ECR_REPOSITORY_URI }}:latest" \
+            -t "$IMAGE_URI" \
+            -t "$LATEST_URI" \
             .
 
-      - name: Push Docker image to ECR
-        run: docker push "${{ secrets.ECR_REPOSITORY_URI }}:latest"
+          docker push "$IMAGE_URI"
+          docker push "$LATEST_URI"
+
+          echo "image=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+
+      - name: Desplegar en ECS Express
+        uses: aws-actions/amazon-ecs-deploy-express-service@v1
+        with:
+          service-name: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          image: ${{ steps.build-image.outputs.image }}
+
+          execution-role-arn: arn:aws:iam::${{ steps.aws-account.outputs.id }}:role/${{ env.ECS_EXECUTION_ROLE }}
+          infrastructure-role-arn: arn:aws:iam::${{ steps.aws-account.outputs.id }}:role/${{ env.ECS_INFRASTRUCTURE_ROLE }}
+
+          container-port: ${{ env.CONTAINER_PORT }}
+
+          environment-variables: |
+            [
+              {
+                "name": "DB_URL",
+                "value": "${{ secrets.DB_URL }}"
+              },
+              {
+                "name": "DB_USERNAME",
+                "value": "${{ secrets.DB_USERNAME }}"
+              },
+              {
+                "name": "DB_PASSWORD",
+                "value": "${{ secrets.DB_PASSWORD }}"
+              }
+            ]
