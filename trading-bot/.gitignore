@@ -1,0 +1,4 @@
+.env
+registro.log
+__pycache__/
+.venv/

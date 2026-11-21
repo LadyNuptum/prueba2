@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - main
+    # Los cambios del bot de trading no necesitan volver a desplegar la app.
+    paths-ignore:
+      - "trading-bot/**"
+      - ".github/workflows/trading-*.yml"
 
   workflow_dispatch:
 
