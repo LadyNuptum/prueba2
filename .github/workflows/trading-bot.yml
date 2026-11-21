@@ -1,0 +1,58 @@
+name: "Trading bot: ejecución diaria"
+
+# Se ejecuta solo de lunes a viernes a las 15:37 UTC
+# (10:37 en Nueva York en invierno, 11:37 en verano), con el mercado abierto.
+# También se puede lanzar a mano desde la pestaña Actions.
+#
+# SIEMPRE usa la cuenta de PAPEL (dinero ficticio).
+# Mientras la variable del repositorio BOT_ACTIVO no valga "si", solo simula.
+on:
+  schedule:
+    - cron: "37 15 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: "simular = solo muestra lo que haría; operar = envía órdenes a la cuenta de papel"
+        type: choice
+        options: [simular, operar]
+        default: simular
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trading-bot
+  cancel-in-progress: false
+
+jobs:
+  bot:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: trading-bot
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: trading-bot/requirements.txt
+      - run: pip install -r requirements.txt
+      - name: Ejecutar bot
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_PAPER: "true"
+          MODO_MANUAL: ${{ inputs.modo }}
+          BOT_ACTIVO: ${{ vars.BOT_ACTIVO }}
+        run: |
+          if [ "$MODO_MANUAL" = "operar" ] || { [ -z "$MODO_MANUAL" ] && [ "$BOT_ACTIVO" = "si" ]; }; then
+            python bot.py
+          else
+            python bot.py --simular
+          fi
+      - name: Resumen
+        if: always()
+        working-directory: trading-bot
+        run: |
+          { echo '## Registro del bot'; echo '```'; cat registro.log 2>/dev/null || echo "(sin registro)"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

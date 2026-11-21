@@ -19,6 +19,31 @@ Bot sencillo en Python que opera acciones en Alpaca con una estrategia de
 
 Todo esto se cambia en [`config.py`](config.py).
 
+## 📱 Usarlo desde el celular (GitHub Actions)
+
+No hace falta instalar nada: el bot se ejecuta en los servidores de GitHub.
+Usa el **navegador** del celular en github.com (la app de GitHub no permite
+configurar secretos). Si una opción no aparece, activa "Ver versión de escritorio".
+
+1. **Claves de Alpaca**: en <https://app.alpaca.markets>, cambia a **Paper Trading**,
+   entra en **API Keys** → **Generate New Key** y copia la *Key* y el *Secret*.
+2. **Guardarlas en GitHub** (quedan cifradas, nadie puede verlas):
+   repositorio → **Settings** → **Secrets and variables** → **Actions** →
+   **New repository secret**. Crea dos:
+   - `ALPACA_API_KEY` con la *Key*
+   - `ALPACA_SECRET_KEY` con el *Secret*
+3. **Backtest**: pestaña **Actions** → **Trading bot: backtest** → **Run workflow**.
+   Cuando termine (1-2 min), abre la ejecución y verás la tabla de resultados.
+4. **Simulación**: **Actions** → **Trading bot: ejecución diaria** → **Run workflow**
+   con modo `simular`. Muestra qué haría hoy sin enviar órdenes.
+5. **Activar el paper trading diario**: en **Settings** → **Secrets and variables** →
+   **Actions** → pestaña **Variables** → **New repository variable**:
+   `BOT_ACTIVO` = `si`. Desde entonces, de lunes a viernes envía órdenes a tu
+   cuenta de **papel** (dinero ficticio). Para pausarlo, cambia el valor a `no`.
+6. Revisa los resultados en la app de Alpaca y el registro de cada día en **Actions**.
+
+Desde GitHub Actions el bot **solo** opera en la cuenta de papel, nunca con dinero real.
+
 ## Archivos
 
 | Archivo | Para qué sirve |

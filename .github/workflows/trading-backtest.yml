@@ -1,0 +1,42 @@
+name: "Trading bot: backtest"
+
+# Se lanza a mano desde GitHub (pestaña Actions → "Trading bot: backtest" → Run workflow).
+on:
+  workflow_dispatch:
+    inputs:
+      simbolos:
+        description: "Acciones separadas por espacios (vacío = las de config.py)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: trading-bot
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: trading-bot/requirements.txt
+      - run: pip install -r requirements.txt
+      - name: Ejecutar backtest
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          SIMBOLOS: ${{ inputs.simbolos }}
+        run: |
+          SIMBOLOS="$(echo "$SIMBOLOS" | tr '[:lower:],' '[:upper:] ')"
+          if ! [[ "$SIMBOLOS" =~ ^[A-Z.\ ]*$ ]]; then
+            echo "Símbolos no válidos: usa solo letras, por ejemplo: AAPL MSFT"; exit 1
+          fi
+          ARGS=()
+          if [ -n "${SIMBOLOS// }" ]; then ARGS=(--simbolos $SIMBOLOS); fi
+          python backtest.py "${ARGS[@]}" | tee resultado.txt
+          { echo '## Resultado del backtest'; echo '```'; cat resultado.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
